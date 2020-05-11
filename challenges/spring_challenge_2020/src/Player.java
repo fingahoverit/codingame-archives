@@ -252,7 +252,7 @@ class Player {
                 } else {
                     pac = Optional.ofNullable(data.getBadPacs().get(pacId)).orElseGet(() -> {
                         data.getBadPacs().put(pacId, new Pac(pacId, false));
-                        return data.getMyPacs().get(pacId);
+                        return data.getBadPacs().get(pacId);
                     });
                 }
 
