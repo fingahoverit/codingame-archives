@@ -1,6 +1,7 @@
 import java.util.*;
 import java.io.*;
 import java.math.*;
+import java.util.stream.Collectors;
 
 /**
  * Grab the pellets as fast as you can!
@@ -8,12 +9,21 @@ import java.math.*;
 class Player {
 
     static class TurnData {
+        int turnNumber = 0;
         int myScore;
         int opponentScore;
         int visiblePacCount; // all your pacs and enemy pacs in sight
         int visiblePelletCount; // all pellets in sight
         Map<Integer, Pac> myPacs = new HashMap<>();
         Map<Integer, Pac> badPacs = new HashMap<>();
+
+        public int getTurnNumber() {
+            return turnNumber;
+        }
+
+        public void setTurnNumber(int turnNumber) {
+            this.turnNumber = turnNumber;
+        }
 
         public int getMyScore() {
             return myScore;
@@ -232,6 +242,8 @@ class Player {
 
         TurnData updateData(int[][] map) {
 
+            data.setTurnNumber(data.getTurnNumber() + 1);
+
             // Update Pac Data
             data.setMyScore(in.nextInt());
             data.setOpponentScore(in.nextInt());
@@ -328,6 +340,7 @@ class Player {
         // Build map
         int[][] gameMap = MapBuilder.build(in);
 
+
         TurnDataUpdater updater = new TurnDataUpdater(in);
         // game loop
         while (true) {
@@ -339,16 +352,18 @@ class Player {
             Map<Integer, Target> targets = TargetFinder.findTarget(gameMap, data);
 
             // Call !
-            data.getMyPacs().forEach((key, pac) -> {
-                String command = new StringJoiner(" ")
-                        .add("MOVE")
-                        .add(key.toString())
-                        .add(String.valueOf(targets.get(key).getX()))
-                        .add(String.valueOf(targets.get(key).getY()))
-                        .add(key + "->" + targets.get(key).getX() + "/" + targets.get(key).getY() + ": \"" + pac.getBrain().readMyThoughts() + "\"")
-                        .toString();
-                System.out.println(command);
-            });
+
+            String command = data.getMyPacs().values().stream().map(pac -> new StringJoiner(" ")
+                    .add("MOVE")
+                    .add(String.valueOf(pac.getPacId()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getX()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getY()))
+                    .add(String.valueOf(pac.getPacId())
+                            + (data.getTurnNumber() % 2 == 0
+                            ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
+                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
+                    .toString()).collect(Collectors.joining(" | "));
+            System.out.println(command);
         }
     }
 }
