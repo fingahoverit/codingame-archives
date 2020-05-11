@@ -370,6 +370,10 @@ class Player {
             Set<Position> lockedTargets = new HashSet<>();
             Map<Integer, Position> targets = new HashMap<>();
             data.getMyPacs().forEach((pacId, pac) -> {
+                // Collision
+                if(pac.getX() == pac.getPrevX() && pac.getY() == pac.getPrevY()) {
+                    lockedTargets.add(findFirstFreePellet(gameMap, lockedTargets));
+                }
                 Position target = findFirstFreePellet(gameMap, lockedTargets);
                 lockedTargets.add(target);
                 targets.put(pacId, target);
