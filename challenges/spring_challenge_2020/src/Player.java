@@ -1,12 +1,43 @@
 import java.util.*;
-import java.io.*;
-import java.math.*;
 import java.util.stream.Collectors;
 
 /**
  * Grab the pellets as fast as you can!
  **/
 class Player {
+
+    public static void main(String args[]) {
+
+        Scanner in = new Scanner(System.in);
+
+        // Build map
+        int[][] gameMap = MapBuilder.build(in);
+
+        TurnDataUpdater updater = new TurnDataUpdater(in);
+        // game loop
+        while (true) {
+
+            // Update Turn Data
+            TurnData data = updater.updateData(gameMap);
+
+            // Find Target
+            Map<Integer, Position> targets = TargetFinder.findTargets(gameMap, data);
+
+            // Call !
+
+            String command = data.getMyPacs().values().stream().map(pac -> new StringJoiner(" ")
+                    .add("MOVE")
+                    .add(String.valueOf(pac.getPacId()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getX()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getY()))
+                    .add(String.valueOf(pac.getPacId())
+                            + (data.getTurnNumber() % 2 == 0
+                            ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
+                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
+                    .toString()).collect(Collectors.joining(" | "));
+            System.out.println(command);
+        }
+    }
 
     static class TurnData {
         int turnNumber = 0;
@@ -79,6 +110,8 @@ class Player {
         boolean mine; // true if this pac is yours
         int x; // position in the grid
         int y; // position in the grid
+        int prevX; // previous position in the grid
+        int prevY; // previous position in the grid
         String typeId; // unused in wood leagues
         int speedTurnsLeft; // unused in wood leagues
         int abilityCooldown; // unused in wood leagues
@@ -119,6 +152,22 @@ class Player {
 
         public void setY(int y) {
             this.y = y;
+        }
+
+        public int getPrevX() {
+            return prevX;
+        }
+
+        public void setPrevX(int prevX) {
+            this.prevX = prevX;
+        }
+
+        public int getPrevY() {
+            return prevY;
+        }
+
+        public void setPrevY(int prevY) {
+            this.prevY = prevY;
         }
 
         public String getTypeId() {
@@ -188,11 +237,11 @@ class Player {
         }
     }
 
-    static class Target {
+    static class Position {
         int x;
         int y;
 
-        Target(int x, int y) {
+        Position(int x, int y) {
             this.x = x;
             this.y = y;
         }
@@ -203,6 +252,20 @@ class Player {
 
         public int getY() {
             return y;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Position position = (Position) o;
+            return x == position.x &&
+                    y == position.y;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(x, y);
         }
     }
 
@@ -268,6 +331,8 @@ class Player {
                     });
                 }
 
+                pac.setPrevX(pac.getX());
+                pac.setPrevY(pac.getY());
                 pac.setX(in.nextInt());
                 pac.setY(in.nextInt());
                 pac.setTypeId(in.next());
@@ -300,70 +365,35 @@ class Player {
 
     static class TargetFinder {
 
+        static Map<Integer, Position> findTargets(int[][] gameMap, TurnData data) {
 
-        static Map<Integer, Target> findTarget(int[][] gameMap, TurnData data) {
-
-            Map<Integer, Target> targets = new HashMap<>();
+            Set<Position> lockedTargets = new HashSet<>();
+            Map<Integer, Position> targets = new HashMap<>();
             data.getMyPacs().forEach((pacId, pac) -> {
-                targets.put(pacId, findFirstPellet(gameMap));
+                Position target = findFirstFreePellet(gameMap, lockedTargets);
+                lockedTargets.add(target);
+                targets.put(pacId, target);
             });
             return targets;
         }
 
-        static Target findFirstPellet(int[][] gameMap) {
+        static Position findFirstFreePellet(int[][] gameMap, Set<Position> lockedTargets) {
 
-            boolean found = false;
             int x = 0;
             int y = 0;
-            while (found == false && x < gameMap.length) {
-                while (found == false && y < gameMap[x].length) {
-                    if (gameMap[x][y] > 0) {
-                        found = true;
+            while (x < gameMap.length) {
+                while (y < gameMap[x].length) {
+                    if (gameMap[x][y] > 0 && !lockedTargets.contains(new Position(x, y))) {
+                        return new Position(x, y);
                     } else {
                         y++;
                     }
                 }
-                if (!found) {
-                    y = 0;
-                    x++;
-                }
+                y = 0;
+                x++;
             }
 
-            return new Target(x, y);
-        }
-    }
-
-    public static void main(String args[]) {
-
-        Scanner in = new Scanner(System.in);
-
-        // Build map
-        int[][] gameMap = MapBuilder.build(in);
-
-
-        TurnDataUpdater updater = new TurnDataUpdater(in);
-        // game loop
-        while (true) {
-
-            // Update Turn Data
-            TurnData data = updater.updateData(gameMap);
-
-            // Find Target
-            Map<Integer, Target> targets = TargetFinder.findTarget(gameMap, data);
-
-            // Call !
-
-            String command = data.getMyPacs().values().stream().map(pac -> new StringJoiner(" ")
-                    .add("MOVE")
-                    .add(String.valueOf(pac.getPacId()))
-                    .add(String.valueOf(targets.get(pac.getPacId()).getX()))
-                    .add(String.valueOf(targets.get(pac.getPacId()).getY()))
-                    .add(String.valueOf(pac.getPacId())
-                            + (data.getTurnNumber() % 2 == 0
-                            ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
-                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
-                    .toString()).collect(Collectors.joining(" | "));
-            System.out.println(command);
+            return lockedTargets.iterator().next();
         }
     }
 }
