@@ -47,6 +47,8 @@ class Player {
         int visiblePelletCount; // all pellets in sight
         Map<Integer, Pac> myPacs = new HashMap<>();
         Map<Integer, Pac> badPacs = new HashMap<>();
+        Set<Position> miniPelletPositions = new HashSet<>();
+        Set<Position> bigPelletPositions = new HashSet<>();
 
         public int getTurnNumber() {
             return turnNumber;
@@ -102,6 +104,22 @@ class Player {
 
         public void setBadPacs(Map<Integer, Pac> badPacs) {
             this.badPacs = badPacs;
+        }
+
+        public Set<Position> getMiniPelletPositions() {
+            return miniPelletPositions;
+        }
+
+        public void setMiniPelletPositions(Set<Position> miniPelletPositions) {
+            this.miniPelletPositions = miniPelletPositions;
+        }
+
+        public Set<Position> getBigPelletPositions() {
+            return bigPelletPositions;
+        }
+
+        public void setBigPelletPositions(Set<Position> bigPelletPositions) {
+            this.bigPelletPositions = bigPelletPositions;
         }
     }
 
@@ -267,6 +285,11 @@ class Player {
         public int hashCode() {
             return Objects.hash(x, y);
         }
+
+        @Override
+        public String toString() {
+            return x + ":" + y;
+        }
     }
 
     static class MapBuilder {
@@ -343,10 +366,18 @@ class Player {
             // Update Map
             data.setVisiblePelletCount(in.nextInt()); // all pellets in sight
             resetGameMap(map);
+            data.setMiniPelletPositions(new HashSet<>());
+            data.setBigPelletPositions(new HashSet<>());
             for (int i = 0; i < data.getVisiblePelletCount(); i++) {
                 int x = in.nextInt();
                 int y = in.nextInt();
                 map[x][y] = in.nextInt(); // amount of points this pellet is worth
+
+                if (map[x][y] == 1) {
+                    data.getMiniPelletPositions().add(new Position(x, y));
+                } else {
+                    data.getBigPelletPositions().add(new Position(x, y));
+                }
             }
 
             return data;
@@ -365,20 +396,73 @@ class Player {
 
     static class TargetFinder {
 
+        private static final String KEY_SEPARATOR = "-";
+
         static Map<Integer, Position> findTargets(int[][] gameMap, TurnData data) {
 
             Set<Position> lockedTargets = new HashSet<>();
             Map<Integer, Position> targets = new HashMap<>();
-            data.getMyPacs().forEach((pacId, pac) -> {
-                // Collision
-                if(pac.getX() == pac.getPrevX() && pac.getY() == pac.getPrevY()) {
-                    lockedTargets.add(findFirstFreePellet(gameMap, lockedTargets));
-                }
-                Position target = findFirstFreePellet(gameMap, lockedTargets);
+
+            distributeBigPellets(data.getMyPacs(), data.getBigPelletPositions(), targets);
+            for (Position target : targets.values()) {
                 lockedTargets.add(target);
-                targets.put(pacId, target);
+            }
+
+            data.getMyPacs().forEach((pacId, pac) -> {
+                if (targets.get(pacId) == null) {
+                    Position target = findDefaultTarget(gameMap, lockedTargets, pac);
+
+                    targets.put(pacId, target);
+                }
             });
             return targets;
+        }
+
+        private static Position findDefaultTarget(int[][] gameMap, Set<Position> lockedTargets, Pac pac) {
+            // Collision
+            if (pac.getX() == pac.getPrevX() && pac.getY() == pac.getPrevY()) {
+                lockedTargets.add(findFirstFreePellet(gameMap, lockedTargets));
+            }
+            Position target = findFirstFreePellet(gameMap, lockedTargets);
+            lockedTargets.add(target);
+            return target;
+        }
+
+        private static void distributeBigPellets(Map<Integer, Pac> pacs, Set<Position> bigPelletPositions,
+                                                 Map<Integer, Position> targets) {
+
+
+            Map<String, Integer> distances = new HashMap();
+
+            for (Position position : bigPelletPositions) {
+                SortedMap<Integer, Integer> ranks = new TreeMap<>();
+                for (Pac pac : pacs.values()) {
+                    int distance = calculateFlightDistance(position, new Position(pac.getX(), pac.getY()));
+                    distances.put(pac.getPacId() + KEY_SEPARATOR + position.toString(), distance);
+                    ranks.put(distance, pac.getPacId());
+                }
+
+                Iterator<Integer> itRanks = ranks.values().iterator();
+                targetPosition(targets, distances, position, itRanks);
+                if (itRanks.hasNext()) {
+                    targetPosition(targets, distances, position, itRanks);
+                }
+            }
+        }
+
+        private static void targetPosition(Map<Integer, Position> targets, Map<String, Integer> distances
+                , Position position, Iterator<Integer> itRanks) {
+            int currentPacId = itRanks.next();
+            Position pacTarget = targets.get(currentPacId);
+            if (pacTarget == null) {
+                targets.put(currentPacId, position);
+            } else {
+                int currentDistance = distances.get(currentPacId + KEY_SEPARATOR + position.toString());
+                int targetDistance = distances.get(currentPacId + KEY_SEPARATOR + pacTarget.toString());
+                if (targetDistance > currentDistance) {
+                    targets.put(currentPacId, position);
+                }
+            }
         }
 
         static Position findFirstFreePellet(int[][] gameMap, Set<Position> lockedTargets) {
@@ -398,6 +482,10 @@ class Player {
             }
 
             return lockedTargets.iterator().next();
+        }
+
+        static int calculateFlightDistance(Position a, Position b) {
+            return Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY());
         }
     }
 }
