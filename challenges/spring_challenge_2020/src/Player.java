@@ -385,7 +385,7 @@ class Player {
 
                 if (map[x][y] == 1) {
                     data.getMiniPelletPositions().add(new Position(x, y));
-                } else {
+                } else if (map[x][y] == 10) {
                     data.getBigPelletPositions().add(new Position(x, y));
                 }
             }
@@ -402,7 +402,8 @@ class Player {
             boolean downWalled = false;
 
             int step = 0;
-            while (reseted) {
+            map[x][y] = 0;
+            while (!reseted) {
                 step++;
 
                 if (!leftWalled && x - step > -1 && map[x - step][y] != -1) {
@@ -443,7 +444,7 @@ class Player {
         String drawMap(int[][] gameMap) {
 
             StringJoiner drawer = new StringJoiner("\n");
-
+            drawer.add("=~=~=~=~=~=~=~=~=~=~=~=~=~=~");
             for (int[] line : gameMap) {
                 StringBuilder sb = new StringBuilder();
                 for (int dot : line) {
