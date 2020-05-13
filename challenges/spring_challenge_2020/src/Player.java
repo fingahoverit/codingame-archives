@@ -24,20 +24,11 @@ class Player {
             Map<Integer, Position> targets = TargetFinder.findTargets(gameMap, data);
 
             // Call !
-
-            String command = data.getMyPacs().values().stream().map(pac -> new StringJoiner(" ")
-                    .add("MOVE")
-                    .add(String.valueOf(pac.getPacId()))
-                    .add(String.valueOf(targets.get(pac.getPacId()).getX()))
-                    .add(String.valueOf(targets.get(pac.getPacId()).getY()))
-                    .add(String.valueOf(pac.getPacId())
-                            + (data.getTurnNumber() % 2 == 0
-                            ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
-                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
-                    .toString()).collect(Collectors.joining(" | "));
+            String command = CommandBuilder.buildCommand(data, targets);
             System.out.println(command);
         }
     }
+
 
     static class TurnData {
         int turnNumber = 0;
@@ -133,6 +124,7 @@ class Player {
         String typeId; // unused in wood leagues
         int speedTurnsLeft; // unused in wood leagues
         int abilityCooldown; // unused in wood leagues
+        int updatedAtTurn;
         PacBrain brain = new PacBrain();
 
         Pac(int pacId, boolean mine) {
@@ -210,6 +202,14 @@ class Player {
 
         public void setAbilityCooldown(int abilityCooldown) {
             this.abilityCooldown = abilityCooldown;
+        }
+
+        public int getUpdatedAtTurn() {
+            return updatedAtTurn;
+        }
+
+        public void setUpdatedAtTurn(int updatedAtTurn) {
+            this.updatedAtTurn = updatedAtTurn;
         }
 
         public PacBrain getBrain() {
@@ -361,6 +361,11 @@ class Player {
                 pac.setTypeId(in.next());
                 pac.setSpeedTurnsLeft(in.nextInt());
                 pac.setAbilityCooldown(in.nextInt());
+                pac.setUpdatedAtTurn(data.getTurnNumber());
+            }
+
+            if (data.getVisiblePacCount() < data.getMyPacs().size() + data.getBadPacs().size()) {
+                removeDeadPacs(data.getMyPacs(), data.getBadPacs());
             }
 
             // Update Map
@@ -383,6 +388,11 @@ class Player {
             return data;
         }
 
+        private void removeDeadPacs(Map<Integer, Pac> myPacs, Map<Integer, Pac> badPacs) {
+            myPacs.entrySet().removeIf(entry -> entry.getValue().getUpdatedAtTurn() < data.getTurnNumber());
+            badPacs.entrySet().removeIf(entry -> entry.getValue().getUpdatedAtTurn() < data.getTurnNumber());
+        }
+
         void resetGameMap(int[][] gameMap) {
             for (int x = 0; x < gameMap.length; x++) {
                 for (int y = 0; y < gameMap[x].length; y++) {
@@ -391,6 +401,33 @@ class Player {
                     }
                 }
             }
+        }
+
+        String drawMap(int[][] gameMap) {
+
+            StringJoiner drawer = new StringJoiner("\n");
+
+            for (int[] line : gameMap) {
+                StringBuilder sb = new StringBuilder();
+                for (int dot : line) {
+                    switch (dot) {
+                        case -1:
+                            sb.append("#");
+                            break;
+                        case 1:
+                            sb.append("o");
+                            break;
+                        case 10:
+                            sb.append("0");
+                            break;
+                        default:
+                            sb.append(" ");
+                            break;
+                    }
+                }
+                drawer.add(sb.toString());
+            }
+            return drawer.toString();
         }
     }
 
@@ -410,12 +447,33 @@ class Player {
 
             data.getMyPacs().forEach((pacId, pac) -> {
                 if (targets.get(pacId) == null) {
-                    Position target = findDefaultTarget(gameMap, lockedTargets, pac);
-
+                    Position target = findNearestPellet(pac, data.getMiniPelletPositions(), lockedTargets);
+                    if (target == null) {
+                        target = findDefaultTarget(gameMap, lockedTargets, pac);
+                    }
+                    if (target == null) {
+                        target = chaseBadPac(pac, data.getBadPacs());
+                    }
+                    lockedTargets.add(target);
                     targets.put(pacId, target);
                 }
             });
             return targets;
+        }
+
+        private static Position chaseBadPac(Pac pac, Map<Integer, Pac> badPacs) {
+
+            if (badPacs.get(pac.getPacId()) != null) {
+                Pac toChase = badPacs.get(pac.getPacId());
+                return new Position(toChase.getX(), toChase.getY());
+            } else {
+                Iterator<Pac> itPacs = badPacs.values().iterator();
+                if (itPacs.hasNext()) {
+                    Pac badPac = itPacs.next();
+                    return new Position(badPac.getX(), badPac.getY());
+                }
+            }
+            return null;
         }
 
         private static Position findDefaultTarget(int[][] gameMap, Set<Position> lockedTargets, Pac pac) {
@@ -424,8 +482,29 @@ class Player {
                 lockedTargets.add(findFirstFreePellet(gameMap, lockedTargets));
             }
             Position target = findFirstFreePellet(gameMap, lockedTargets);
-            lockedTargets.add(target);
+            if (target != null) {
+                lockedTargets.add(target);
+            }
             return target;
+        }
+
+        private static Position findNearestPellet(Pac pac, Set<Position> pelletPositions, Set<Position> lockedTargets) {
+
+            final int MAX_DEPTH = 4;
+
+            for (int depth = 1; depth < MAX_DEPTH; depth++) {
+
+                for (int x = -depth; x <= depth; x++) {
+                    for (int y = -depth; y <= depth; y++) {
+                        Position curPos = new Position(pac.getX() + x, pac.getY() + y);
+                        if (!lockedTargets.contains(curPos) && pelletPositions.contains(curPos)) {
+                            return curPos;
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
         private static void distributeBigPellets(Map<Integer, Pac> pacs, Set<Position> bigPelletPositions,
@@ -481,11 +560,57 @@ class Player {
                 x++;
             }
 
-            return lockedTargets.iterator().next();
+            Iterator<Position> it = lockedTargets.iterator();
+            if (it.hasNext()) {
+                return it.next();
+            } else {
+                return null;
+            }
+
         }
 
         static int calculateFlightDistance(Position a, Position b) {
             return Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY());
+        }
+    }
+
+    static class CommandBuilder {
+        private static String buildCommand(TurnData data, Map<Integer, Position> targets) {
+
+            return data.getMyPacs().values().stream().map(pac -> {
+
+                        // Switches
+
+                        // Speeds
+                        if (pac.getAbilityCooldown() == 0) {
+                            return generateSpeedCommand(data, pac);
+                        }
+
+                        // Moves
+                        return generateMoveCommand(data, targets, pac);
+                    }
+            ).collect(Collectors.joining(" | "));
+        }
+
+        private static String generateMoveCommand(TurnData data, Map<Integer, Position> targets, Pac pac) {
+            return (targets.get(pac.getPacId()) == null)
+                    ? ""
+                    : new StringJoiner(" ")
+                    .add("MOVE")
+                    .add(String.valueOf(pac.getPacId()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getX()))
+                    .add(String.valueOf(targets.get(pac.getPacId()).getY()))
+                    .add(String.valueOf(pac.getPacId())
+                            + (data.getTurnNumber() % 2 == 0
+                            ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
+                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
+                    .toString();
+        }
+
+        private static String generateSpeedCommand(TurnData data, Pac pac) {
+            return new StringJoiner(" ")
+                    .add("SPEED")
+                    .add(String.valueOf(pac.getPacId())).toString();
         }
     }
 }
