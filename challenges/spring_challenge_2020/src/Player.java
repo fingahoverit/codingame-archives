@@ -309,6 +309,8 @@ class Player {
                 for (int ln = 0; ln < chars.length; ln++) {
                     if ('#' == chars[ln]) {
                         map[ln][rn] = -1;
+                    } else {
+                        map[ln][rn] = 1;
                     }
                 }
             }
@@ -362,6 +364,10 @@ class Player {
                 pac.setSpeedTurnsLeft(in.nextInt());
                 pac.setAbilityCooldown(in.nextInt());
                 pac.setUpdatedAtTurn(data.getTurnNumber());
+
+                if (mine) {
+                    resetGameMapSight(pac.getX(), pac.getY(), map);
+                }
             }
 
             if (data.getVisiblePacCount() < data.getMyPacs().size() + data.getBadPacs().size()) {
@@ -370,7 +376,6 @@ class Player {
 
             // Update Map
             data.setVisiblePelletCount(in.nextInt()); // all pellets in sight
-            resetGameMap(map);
             data.setMiniPelletPositions(new HashSet<>());
             data.setBigPelletPositions(new HashSet<>());
             for (int i = 0; i < data.getVisiblePelletCount(); i++) {
@@ -388,19 +393,51 @@ class Player {
             return data;
         }
 
+        private void resetGameMapSight(int x, int y, int[][] map) {
+
+            boolean reseted = false;
+            boolean leftWalled = false;
+            boolean rightWalled = false;
+            boolean upWalled = false;
+            boolean downWalled = false;
+
+            int step = 0;
+            while (reseted) {
+                step++;
+
+                if (!leftWalled && x - step > -1 && map[x - step][y] != -1) {
+                    map[x - step][y] = 0;
+                } else {
+                    leftWalled = true;
+                }
+
+                if (!rightWalled && x + step < map.length && map[x + step][y] != -1) {
+                    map[x + step][y] = 0;
+                } else {
+                    rightWalled = true;
+                }
+
+                if (!upWalled && y - step > -1 && map[x][y - step] != -1) {
+                    map[x][y - step] = 0;
+                } else {
+                    upWalled = true;
+                }
+
+                if (!downWalled && y + step < map[0].length && map[x][y + step] != -1) {
+                    map[x][y + step] = 0;
+                } else {
+                    downWalled = true;
+                }
+
+                if (leftWalled && rightWalled && upWalled && downWalled) {
+                    reseted = true;
+                }
+            }
+        }
+
         private void removeDeadPacs(Map<Integer, Pac> myPacs, Map<Integer, Pac> badPacs) {
             myPacs.entrySet().removeIf(entry -> entry.getValue().getUpdatedAtTurn() < data.getTurnNumber());
             badPacs.entrySet().removeIf(entry -> entry.getValue().getUpdatedAtTurn() < data.getTurnNumber());
-        }
-
-        void resetGameMap(int[][] gameMap) {
-            for (int x = 0; x < gameMap.length; x++) {
-                for (int y = 0; y < gameMap[x].length; y++) {
-                    if (gameMap[x][y] > -1) {
-                        gameMap[x][y] = 0;
-                    }
-                }
-            }
         }
 
         String drawMap(int[][] gameMap) {
