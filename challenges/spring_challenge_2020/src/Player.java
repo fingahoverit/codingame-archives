@@ -1,5 +1,7 @@
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Grab the pellets as fast as you can!
@@ -22,6 +24,8 @@ class Player {
 
             // Find Target
             Map<Integer, Position> targets = TargetFinder.findTargets(gameMap, data);
+
+            updater.resetMap(gameMap, data.getMyPacs(), data.getBadPacs());
 
             // Call !
             String command = CommandBuilder.buildCommand(data, targets);
@@ -125,6 +129,7 @@ class Player {
         int speedTurnsLeft; // unused in wood leagues
         int abilityCooldown; // unused in wood leagues
         int updatedAtTurn;
+        boolean mannered;
         PacBrain brain = new PacBrain();
 
         Pac(int pacId, boolean mine) {
@@ -212,6 +217,14 @@ class Player {
             this.updatedAtTurn = updatedAtTurn;
         }
 
+        public boolean isMannered() {
+            return mannered;
+        }
+
+        public void setMannered(boolean mannered) {
+            this.mannered = mannered;
+        }
+
         public PacBrain getBrain() {
             return brain;
         }
@@ -236,8 +249,8 @@ class Player {
     }
 
     static class PacBrain {
-        static final String[] THOUGHTS = {"Itok.", "Zoktok.", "Ur-ur-ur!", "Glor'duk.", "Zug zug.", "Dabu.",
-                "Lok'tar.", "Swobu."};
+        static final String[] THOUGHTS = {"Itok", "Zoktok", "UrUrUr", "GlorDuk", "ZugZug", "Dabu",
+                "LokTar", "Swobu"};
         static final int THOUGHT_FATIGUE = 5;
 
         int callCounter = 0;
@@ -317,6 +330,54 @@ class Player {
 
             return map;
         }
+
+        public static String drawMap(int[][] gameMap) {
+
+            StringJoiner drawer = new StringJoiner("\n");
+            drawer.add("=~=~=~=~=~=~=~=~=~=~=~=~=~=~");
+            // pac : ᗧ / bad : ᗣ / wall : # / gum : · / supergum : 0
+            for (int y = 0; y < gameMap[0].length; y++) {
+                StringBuilder sb = new StringBuilder();
+                for (int x = 0; x < gameMap.length; x++) {
+                    sb.append(Optional.ofNullable(
+                            MapValue.getByValue(gameMap[x][y]).getMapSymbol())
+                            .orElse(" "));
+                }
+                drawer.add(sb.toString());
+            }
+            return drawer.toString();
+        }
+
+        public enum MapValue {
+            ENEMY_PAC(-10, "ᗣ"),
+            ALLY_PAC(-5, "ᗧ"),
+            WALL(-1, "#"),
+            EMPTY(0, " "),
+            GUM(1, "·"),
+            POWER_GUM(10, "0");
+
+            static Map<Integer, MapValue> byValue = Arrays.stream(MapValue.values())
+                    .collect(Collectors.toMap(MapValue::getValue, Function.identity()));
+            int value;
+            String mapSymbol;
+
+            MapValue(int value, String mapSymbol) {
+                this.value = value;
+                this.mapSymbol = mapSymbol;
+            }
+
+            static MapValue getByValue(int value) {
+                return byValue.get(value);
+            }
+
+            public int getValue() {
+                return value;
+            }
+
+            public String getMapSymbol() {
+                return mapSymbol;
+            }
+        }
     }
 
     static class TurnDataUpdater {
@@ -364,9 +425,14 @@ class Player {
                 pac.setSpeedTurnsLeft(in.nextInt());
                 pac.setAbilityCooldown(in.nextInt());
                 pac.setUpdatedAtTurn(data.getTurnNumber());
+                pac.setMannered(false);
 
+                // map updates
                 if (mine) {
                     resetGameMapSight(pac.getX(), pac.getY(), map);
+                    map[pac.getX()][pac.getY()] = MapBuilder.MapValue.ALLY_PAC.getValue();
+                } else {
+                    map[pac.getX()][pac.getY()] = MapBuilder.MapValue.ENEMY_PAC.getValue();
                 }
             }
 
@@ -389,6 +455,7 @@ class Player {
                     data.getBigPelletPositions().add(new Position(x, y));
                 }
             }
+            System.err.println(MapBuilder.drawMap(map));
 
             return data;
         }
@@ -407,25 +474,25 @@ class Player {
                 step++;
 
                 if (!leftWalled && x - step > -1 && map[x - step][y] != -1) {
-                    map[x - step][y] = 0;
+                    map[x - step][y] = MapBuilder.MapValue.EMPTY.getValue();
                 } else {
                     leftWalled = true;
                 }
 
                 if (!rightWalled && x + step < map.length && map[x + step][y] != -1) {
-                    map[x + step][y] = 0;
+                    map[x + step][y] = MapBuilder.MapValue.EMPTY.getValue();
                 } else {
                     rightWalled = true;
                 }
 
                 if (!upWalled && y - step > -1 && map[x][y - step] != -1) {
-                    map[x][y - step] = 0;
+                    map[x][y - step] = MapBuilder.MapValue.EMPTY.getValue();
                 } else {
                     upWalled = true;
                 }
 
                 if (!downWalled && y + step < map[0].length && map[x][y + step] != -1) {
-                    map[x][y + step] = 0;
+                    map[x][y + step] = MapBuilder.MapValue.EMPTY.getValue();
                 } else {
                     downWalled = true;
                 }
@@ -441,31 +508,15 @@ class Player {
             badPacs.entrySet().removeIf(entry -> entry.getValue().getUpdatedAtTurn() < data.getTurnNumber());
         }
 
-        String drawMap(int[][] gameMap) {
+        public void resetMap(int[][] map, Map<Integer, Pac> myPacs, Map<Integer, Pac> badPacs) {
 
-            StringJoiner drawer = new StringJoiner("\n");
-            drawer.add("=~=~=~=~=~=~=~=~=~=~=~=~=~=~");
-            for (int[] line : gameMap) {
-                StringBuilder sb = new StringBuilder();
-                for (int dot : line) {
-                    switch (dot) {
-                        case -1:
-                            sb.append("#");
-                            break;
-                        case 1:
-                            sb.append("o");
-                            break;
-                        case 10:
-                            sb.append("0");
-                            break;
-                        default:
-                            sb.append(" ");
-                            break;
-                    }
-                }
-                drawer.add(sb.toString());
-            }
-            return drawer.toString();
+            // Removes pac from map, next turn will place them well
+            myPacs.forEach((id, pac) -> {
+                map[pac.getX()][pac.getY()] = MapBuilder.MapValue.EMPTY.getValue();
+            });
+            badPacs.forEach((id, pac) -> {
+                map[pac.getX()][pac.getY()] = MapBuilder.MapValue.EMPTY.getValue();
+            });
         }
     }
 
@@ -484,8 +535,20 @@ class Player {
             }
 
             data.getMyPacs().forEach((pacId, pac) -> {
+
+                // handle enemy avoid
+                Position target = avoid(gameMap, pac, data.getBadPacs());
+                if (target == null) {
+                    target = avoid(gameMap, pac, data.getMyPacs());
+                }
+
+                if (target != null) {
+                    lockedTargets.add(target);
+                    targets.put(pacId, target);
+                }
+
                 if (targets.get(pacId) == null) {
-                    Position target = findNearestPellet(pac, data.getMiniPelletPositions(), lockedTargets);
+                    target = findNearestPellet(gameMap, pac, lockedTargets);
                     if (target == null) {
                         target = findDefaultTarget(gameMap, lockedTargets, pac);
                     }
@@ -496,7 +559,51 @@ class Player {
                     targets.put(pacId, target);
                 }
             });
+
+
             return targets;
+        }
+
+//        private static Position avoidAllies(int[][] gameMap, Pac pac, Map<Integer, Pac> myPacs, Set<Position> lockedTargets) {
+//
+//            Position pacPos = new Position(pac.getX(), pac.getY());
+//
+//            for (Pac myPac : myPacs.values()) {
+//                if (myPac.getPacId() != pac.getPacId()) {
+//                    Position myPacPos = new Position(myPac.getX(), myPac.getY());
+//
+//                    if (calculateFlightDistance(pacPos, myPacPos) <= 2) {
+//                        Set<Position> exclusions = new HashSet<>(lockedTargets);
+//                        exclusions.add(pacPos);
+//                        exclusions.add(myPacPos);
+//                        return findNearestValue(gameMap, pac, 1,
+//                                Stream.of(MapBuilder.MapValue.EMPTY, MapBuilder.MapValue.GUM).collect(Collectors.toSet()),
+//                                exclusions);
+//                    }
+//                }
+//            }
+//            return null;
+//        }
+
+        private static Position avoid(int[][] gameMap, Pac pac, Map<Integer, Pac> pacsToAvoid) {
+
+            Position pacPos = new Position(pac.getX(), pac.getY());
+
+            for (Pac otherPac : pacsToAvoid.values()) {
+                Position otherPacPos = new Position(otherPac.getX(), otherPac.getY());
+                if (calculateFlightDistance(pacPos, otherPacPos) == 2 && !otherPac.isMannered()) {
+                    pac.setMannered(true);
+                    return pacPos;
+                }
+
+                if (calculateFlightDistance(pacPos, otherPacPos) == 1) {
+                    return findNearestValue(gameMap, pac, 1,
+                            Stream.of(MapBuilder.MapValue.EMPTY, MapBuilder.MapValue.GUM).collect(Collectors.toSet()),
+                            Stream.of(pacPos, otherPacPos).collect(Collectors.toSet()));
+                }
+            }
+
+            return null;
         }
 
         private static Position chaseBadPac(Pac pac, Map<Integer, Pac> badPacs) {
@@ -526,17 +633,28 @@ class Player {
             return target;
         }
 
-        private static Position findNearestPellet(Pac pac, Set<Position> pelletPositions, Set<Position> lockedTargets) {
+        private static Position findNearestPellet(int[][] gameMap, Pac pac, Set<Position> lockedTargets) {
 
-            final int MAX_DEPTH = 4;
+            return findNearestValue(gameMap, pac, 6, Stream.of(MapBuilder.MapValue.GUM).collect(Collectors.toSet())
+                    , lockedTargets);
+        }
 
-            for (int depth = 1; depth < MAX_DEPTH; depth++) {
+        private static Position findNearestValue(int[][] gameMap, Pac pac, int depth, Set<MapBuilder.MapValue> values
+                , Set<Position> exclusion) {
 
-                for (int x = -depth; x <= depth; x++) {
-                    for (int y = -depth; y <= depth; y++) {
-                        Position curPos = new Position(pac.getX() + x, pac.getY() + y);
-                        if (!lockedTargets.contains(curPos) && pelletPositions.contains(curPos)) {
-                            return curPos;
+            Position pacPos = new Position(pac.getX(), pac.getY());
+            for (int level = 1; level <= depth; level++) {
+
+                for (int x = -level; x <= level; x++) {
+                    for (int y = -level; y <= level; y++) {
+                        if (pac.getX() + x >= 0 && pac.getX() + x < gameMap.length
+                                && pac.getY() + y >= 0 && pac.getY() + y < gameMap[0].length) {
+                            Position curPos = new Position(pac.getX() + x, pac.getY() + y);
+                            if (calculateFlightDistance(pacPos, curPos) <= depth
+                                    && !exclusion.contains(curPos)
+                                    && values.contains(MapBuilder.MapValue.getByValue(gameMap[pac.getX() + x][pac.getY() + y]))) {
+                                return curPos;
+                            }
                         }
                     }
                 }
@@ -641,14 +759,15 @@ class Player {
                     .add(String.valueOf(pac.getPacId())
                             + (data.getTurnNumber() % 2 == 0
                             ? "->" + targets.get(pac.getPacId()).getX() + "/" + targets.get(pac.getPacId()).getY()
-                            : ": \"" + pac.getBrain().readMyThoughts() + "\""))
+                            : ":" + pac.getBrain().readMyThoughts()))
                     .toString();
         }
 
         private static String generateSpeedCommand(TurnData data, Pac pac) {
             return new StringJoiner(" ")
                     .add("SPEED")
-                    .add(String.valueOf(pac.getPacId())).toString();
+                    .add(String.valueOf(pac.getPacId()))
+                    .add("AAaaAA!").toString();
         }
     }
 }
