@@ -1,6 +1,5 @@
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Auto-generated code below aims at helping you parse
@@ -8,7 +7,9 @@ import java.util.Scanner;
  **/
 class Player {
 
+    public static final int MAX_INVENTORY_SIZE = 10;
     public static final int MAX_DIFF_INGREDIENTS = 4;
+    public static final int NOT_FOUND = -1;
     private List<Spell> spells = new ArrayList<>();
     private List<Recipe> recipes = new ArrayList<>();
     private Inventory inventory;
@@ -16,45 +17,77 @@ class Player {
 
     public static void main(String[] args) {
 
-        Player player = new Player();
-        Player opponent = new Player();
         Scanner in = new Scanner(System.in);
 
         // game loop
         while (true) {
 
+            int id = -1;
+            Command command = Command.WAIT;
+            Player player = new Player();
+            Player opponent = new Player();
+
             // Load
             loadInput(in, player, opponent);
 
-            // Find expensiver
-            int id = findExpensiver(player);
+            // display input
+            System.err.println(" Player > " + player.toString());
+            System.err.println(" Opponent > " + opponent.toString());
 
-            // Write an action using System.out.println()
-            // To debug: System.err.println("Debug messages...");
+            // Find Recipe to cook
+            id = findRecipe(player, opponent);
 
+            // Find Spell to cast
+            if (id != NOT_FOUND) {
+                command = Command.BREW;
+            } else {
+                id = findSpell(player, opponent);
+
+                if (id != NOT_FOUND) {
+                    command = Command.CAST;
+                } else {
+                    command = Command.REST;
+                }
+            }
 
             // in the first league: BREW <id> | WAIT; later: BREW <id> | CAST <id> [<times>] | LEARN <id> | REST | WAIT
-            System.out.println("BREW " + id);
+            System.out.println(generateCommand(id, command));
         }
     }
 
-    private static int findExpensiver(Player player) {
+    private static String generateCommand(int id, Command command) {
+        if (command == Command.REST || command == Command.WAIT) {
+            return command.name();
+        }
+        return command.name() + " " + id;
+    }
 
-        int id = 0;
-        int expensiver = 0;
-        for (Recipe recipe : player.getRecipes()) {
-            if (expensiver < recipe.getPrice()) {
+    private static int findSpell(Player player, Player opponent) {
+        Collections.reverse(player.getSpells());
+        for (Spell spell : player.getSpells()) {
+            if (spell.isCastable(player.getInventory())) {
 
-                expensiver = recipe.getPrice();
-                id = recipe.getActionId();
+                // Filter cast
+                if (player.getInventory().returnMaxNbOfTransformedIngredientAfterCast(spell.getIngredients()) < 3) {
+                    return spell.getActionId();
+                }
             }
         }
+        return NOT_FOUND;
+    }
 
-        return id;
+    private static int findRecipe(Player player, Player opponent) {
+        for (Recipe recipe : player.getRecipes().stream().sorted(Comparator.comparingInt(Recipe::getPrice)).collect(Collectors.toList())) {
+            if (recipe.isCookable(player.getInventory())) {
+                return recipe.getActionId();
+            }
+        }
+        return NOT_FOUND;
     }
 
     private static void loadInput(Scanner in, Player player, Player opponent) {
         int actionCount = in.nextInt(); // the number of spells and recipes in play
+
         for (int i = 0; i < actionCount; i++) {
             int actionId = in.nextInt(); // the unique ID of this spell or recipe
             String actionType = in.next(); // in the first league: BREW; later: CAST, OPPONENT_CAST, LEARN, BREW
@@ -74,6 +107,7 @@ class Player {
                     break;
             }
         }
+
         completePlayer(in, player);
         completePlayer(in, opponent);
     }
@@ -122,6 +156,16 @@ class Player {
         player.getRecipes().add(recipe);
     }
 
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Player.class.getSimpleName() + "[", "]")
+                .add("spells=" + spells)
+                .add("recipes=" + recipes)
+                .add("inventory=" + inventory)
+                .add("score=" + score)
+                .toString();
+    }
+
     public List<Spell> getSpells() {
         return spells;
     }
@@ -155,7 +199,11 @@ class Player {
     }
 
     enum ActionType {
-        CAST, OPPONENT_CAST, BREW;
+        CAST, OPPONENT_CAST, BREW
+    }
+
+    enum Command {
+        BREW, CAST, REST, WAIT
     }
 
     public static class Spell {
@@ -223,13 +271,31 @@ class Player {
             this.repeatable = repeatable;
         }
 
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", Spell.class.getSimpleName() + "[", "]")
+                    .add("actionId=" + actionId)
+                    .add("ingredients=" + ingredients)
+                    .add("price=" + price)
+                    .add("tomeIndex=" + tomeIndex)
+                    .add("taxCount=" + taxCount)
+                    .add("castable=" + castable)
+                    .add("repeatable=" + repeatable)
+                    .toString();
+        }
+
         public void addIngredient(Integer ingredient) {
             ingredients.add(ingredient);
         }
 
-        public boolean isCastable(Inventory inventory) {
-            return castable && inventory.isEnough(this.ingredients);
+        public int sumIngredients() {
+            return ingredients.stream().mapToInt(Integer::intValue).sum();
         }
+
+        public boolean isCastable(Inventory inventory) {
+            return castable && inventory.isEnough(this.ingredients) && (sumIngredients() + inventory.sumIngredients() < MAX_INVENTORY_SIZE);
+        }
+
     }
 
     public static class Recipe {
@@ -297,6 +363,19 @@ class Player {
             this.repeatable = repeatable;
         }
 
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", Recipe.class.getSimpleName() + "[", "]")
+                    .add("actionId=" + actionId)
+                    .add("ingredients=" + ingredients)
+                    .add("price=" + price)
+                    .add("tomeIndex=" + tomeIndex)
+                    .add("taxCount=" + taxCount)
+                    .add("castable=" + castable)
+                    .add("repeatable=" + repeatable)
+                    .toString();
+        }
+
         public void addIngredient(Integer ingredient) {
             ingredients.add(ingredient);
         }
@@ -309,14 +388,51 @@ class Player {
     public static class Inventory {
         List<Integer> ingredients = new ArrayList<>();
 
+        // Stats
+        int currentMaxIngredient = 0;
+
+        @Override
+        public String toString() {
+            return new StringJoiner(", ", Inventory.class.getSimpleName() + "[", "]")
+                    .add("ingredients=" + ingredients)
+                    .toString();
+        }
+
         public void addIngredient(Integer ingredient) {
             ingredients.add(ingredient);
         }
 
+        public int sumIngredients() {
+            return ingredients.stream().mapToInt(Integer::intValue).sum();
+        }
+
+        public int getCurrentMaxIngredient() {
+            if (currentMaxIngredient == 0) {
+                currentMaxIngredient = ingredients.stream().mapToInt(Integer::intValue).max().orElse(0);
+            }
+
+            return currentMaxIngredient;
+        }
+
+        public int returnMaxNbOfTransformedIngredientAfterCast(List<Integer> deltas) {
+
+            int maxNbIngredient = 0;
+            for (int i = 1; i < deltas.size(); i++) {
+                int nbIngredient = this.ingredients.get(i) + deltas.get(i);
+                if (nbIngredient > maxNbIngredient) {
+                    maxNbIngredient = nbIngredient;
+                }
+            }
+            return maxNbIngredient;
+        }
+
         public boolean isEnough(List<Integer> deltas) {
-            return false;
+            for (int i = 0; i < deltas.size(); i++) {
+                if (this.ingredients.get(i) + deltas.get(i) < 0) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
-
-
 }
