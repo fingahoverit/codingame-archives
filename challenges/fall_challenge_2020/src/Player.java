@@ -26,9 +26,10 @@ class Player {
             Command command = Command.WAIT;
             Player player = new Player();
             Player opponent = new Player();
+            Player grimoire = new Player();
 
             // Load
-            loadInput(in, player, opponent);
+            loadInput(in, player, opponent, grimoire);
 
             // display input
             System.err.println(" Player > " + player.toString());
@@ -85,7 +86,7 @@ class Player {
         return NOT_FOUND;
     }
 
-    private static void loadInput(Scanner in, Player player, Player opponent) {
+    private static void loadInput(Scanner in, Player player, Player opponent, Player grimoire) {
         int actionCount = in.nextInt(); // the number of spells and recipes in play
 
         for (int i = 0; i < actionCount; i++) {
@@ -98,6 +99,9 @@ class Player {
                     break;
                 case OPPONENT_CAST:
                     addSpell(in, actionId, opponent);
+                    break;
+                case LEARN:
+                    addSpell(in, actionId, grimoire);
                     break;
                 case BREW:
                     addRecipe(in, actionId, player);
@@ -199,7 +203,7 @@ class Player {
     }
 
     enum ActionType {
-        CAST, OPPONENT_CAST, BREW
+        CAST, OPPONENT_CAST, LEARN, BREW
     }
 
     enum Command {
@@ -293,7 +297,7 @@ class Player {
         }
 
         public boolean isCastable(Inventory inventory) {
-            return castable && inventory.isEnough(this.ingredients) && (sumIngredients() + inventory.sumIngredients() < MAX_INVENTORY_SIZE);
+            return castable && inventory.isEnough(this.ingredients) && (sumIngredients() + inventory.sumIngredients() <= MAX_INVENTORY_SIZE);
         }
 
     }
