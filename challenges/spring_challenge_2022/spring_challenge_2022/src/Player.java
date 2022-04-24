@@ -92,11 +92,9 @@ class Player {
                     }
                 }
 
-                if (threatScore > 0) {
-                    double distance = Math.hypot(baseX - monster.x, baseY - monster.y);
-                    threatScore += Math.round((float) (500 * (1 / (distance + 1))));
-                    monster.threatScore = threatScore;
-                }
+                double distance = Math.hypot(baseX - monster.x, baseY - monster.y);
+                threatScore += Math.round((float) (500 * (1 / (distance + 1))));
+                monster.threatScore = threatScore;
 
                 Entity monsterWithLowestScore = targetMonsters.stream()
                         .min(Comparator.comparingInt(value -> value.threatScore))
@@ -108,8 +106,11 @@ class Player {
                         targetMonsters.remove(monsterWithLowestScore);
                     }
                     targetMonsters.add(monster);
+                } else if(targetMonsters.size() < 3){
+                    targetMonsters.add(monster);
                 }
             }
+            System.err.println("monsters found : " + monsters.size());
 
             // find each hero for each monster
             Map<Double, Map<Entity, Entity>> monsterToHeroesDistance = new TreeMap<>();
@@ -119,6 +120,7 @@ class Player {
                     monsterToHeroesDistance.computeIfAbsent(distance, k -> new HashMap()).put(targetMonster, myHero);
                 }
             }
+            System.err.println("target found : " + targetMonsters.size());
             for (Map<Entity, Entity> value : monsterToHeroesDistance.values()) {
                 for (Entity monster : value.keySet()) {
                     Entity currentHeroTarget = value.get(monster).target;
@@ -130,12 +132,38 @@ class Player {
             }
 
             // Shout commands
+            boolean uniqueWait = false;
             for (Entity myHero : myHeroes) {
                 Entity target = myHero.target;
                 if (target != null) {
                     System.out.println(String.format("MOVE %d %d", target.x, target.y));
                 } else {
-                    System.out.println("WAIT");
+                    if (!uniqueWait) {
+                        System.out.println("WAIT");
+                        uniqueWait = true;
+                    } else {
+                        int movx = 0;
+                        int movy = 0;
+                        if (baseX == 0) {
+                            movx = myHero.x + myHero.x;
+                            movy = myHero.y + myHero.y;
+                            double newHyp = Math.hypot(movx, movy);
+                            if (newHyp > 15000) {
+                                movx = myHero.x - myHero.x / 2;
+                                movy = myHero.y - myHero.y / 2;
+                            }
+                        } else {
+                            movx = myHero.x - (baseX - myHero.x);
+                            movy = myHero.y - (baseY - myHero.y);
+                            double newHyp = Math.hypot(baseX - movx, baseY - movy);
+                            System.err.println("hyp : " + newHyp);
+                            if (newHyp > 15000) {
+                                movx = myHero.x + (baseX - myHero.x) / 2;
+                                movy = myHero.y + (baseY - myHero.y) / 2;
+                            }
+                        }
+                        System.out.println(String.format("MOVE %d %d", movx, movy));
+                    }
                 }
             }
         }
